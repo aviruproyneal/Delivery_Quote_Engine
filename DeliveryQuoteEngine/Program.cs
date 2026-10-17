@@ -11,6 +11,12 @@ namespace DeliveryQuoteEngine
         double WeightKg
     );
 
+    public sealed record DeliveryQuote(
+        string RequestId,
+        string CustomerName,
+        decimal Cost
+    );
+
     public static class QuoteEngine
     {
         public static (IReadOnlyList<DeliveryRequest> Valid, IReadOnlyList<string> Errors)
@@ -74,6 +80,14 @@ namespace DeliveryQuoteEngine
             return quotes;
         }
 
+        public static QuoteSummary BuildSummary(
+            IReadOnlyList<DeliveryQuote> quotes, int rejectedCount)
+        {
+            decimal total = 0m;
+            foreach (var q in quotes) total += q.Cost;
+            return new QuoteSummary(quotes, total, quotes.Count, rejectedCount);
+        }
+
         public static QuoteSummary RunPipeline(
             IEnumerable<string> lines,
             Func<DeliveryRequest, decimal> policy)
@@ -82,5 +96,9 @@ namespace DeliveryQuoteEngine
             var quotes = CalculateQuotes(valid, policy);
             return BuildSummary(quotes, errors.Count);
         }
+
+        public static decimal StandardPolicy(DeliveryRequest r) => 500m + 100m * (decimal)r.DistanceKm;
+
+        public static decimal ExpressPolicy(DeliveryRequest r) => 800m + 150m * (decimal)r.DistanceKm;
     }
 }

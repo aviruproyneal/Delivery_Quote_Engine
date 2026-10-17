@@ -26,24 +26,25 @@ namespace DeliveryQuoteEngine.Tests
 
         public static void Main()
         {
-            // 1. We test the standard policy (Normal workflow)
             var standard = QuoteEngine.RunPipeline(SampleData, QuoteEngine.StandardPolicy);
             Check("Normal: 4 valid, 1 invalid, Standard total = 3750",
                 standard.AcceptedCount == 4
                 && standard.RejectedCount == 1
                 && standard.TotalRevenue == 3750m);
-
-            // 7. Two policies give different totals on the same dataset
+            
             var express = QuoteEngine.RunPipeline(SampleData, QuoteEngine.ExpressPolicy);
-            Check("Two policies differ on the same input",
-                standard.TotalRevenue != express.TotalRevenue);
-
-            // 5. We reject distance below minimum
+            Check("Normal: Express total = 5825",
+                express.AcceptedCount == 4 && express.TotalRevenue == 5825m);
+            
+            var boundaryStd = QuoteEngine.RunPipeline(new[] { "B|Test|2.0|1.0" }, QuoteEngine.StandardPolicy);
+            var boundaryExp = QuoteEngine.RunPipeline(new[] { "B|Test|2.0|1.0" }, QuoteEngine.ExpressPolicy);
+            Check("Boundary: 2 km -> Standard 700, Express 1100",
+                boundaryStd.TotalRevenue == 700m && boundaryExp.TotalRevenue == 1100m);
+            
             var below = QuoteEngine.RunPipeline(new[] { "B|Test|0.49|1.0" }, QuoteEngine.StandardPolicy);
             Check("Below minimum: 0.49 km rejected",
                 below.AcceptedCount == 0 && below.RejectedCount == 1);
-
-            // 6. Invalid input - malformed, empty ID, empty name
+            
             var invalid = QuoteEngine.RunPipeline(new[]
             {
                 "R1|A|bad|1.0",
@@ -52,6 +53,9 @@ namespace DeliveryQuoteEngine.Tests
             }, QuoteEngine.StandardPolicy);
             Check("Invalid: all 3 records rejected",
                 invalid.AcceptedCount == 0 && invalid.RejectedCount == 3);
+            
+            Check("Two policies differ on the same input",
+                standard.TotalRevenue != express.TotalRevenue);
 
             Console.WriteLine();
             Console.WriteLine($"Passed: {passed}/{total}");
