@@ -17,6 +17,13 @@ namespace DeliveryQuoteEngine
         decimal Cost
     );
 
+    public sealed record QuoteSummary(
+        IReadOnlyList<DeliveryQuote> Quotes,
+        decimal TotalRevenue,
+        int AcceptedCount,
+        int RejectedCount
+    );
+
     public static class QuoteEngine
     {
         public static (IReadOnlyList<DeliveryRequest> Valid, IReadOnlyList<string> Errors)
@@ -47,18 +54,15 @@ namespace DeliveryQuoteEngine
                 {
                     errors.Add($"Line {lineNumber}: RequestId is empty."); continue;
                 }
-
                 if (name.Length == 0)
                 {
                     errors.Add($"Line {lineNumber}: CustomerName is empty."); continue;
                 }
-
                 if (!double.TryParse(distText, NumberStyles.Float,
                         CultureInfo.InvariantCulture, out double dist) || dist < 0.5)
                 {
                     errors.Add($"Line {lineNumber}: distance must be >= 0.5 km."); continue;
                 }
-
                 if (!double.TryParse(weightText, NumberStyles.Float,
                         CultureInfo.InvariantCulture, out double weight) || weight < 0)
                 {
@@ -67,6 +71,7 @@ namespace DeliveryQuoteEngine
 
                 valid.Add(new DeliveryRequest(id, name, dist, weight));
             }
+
             return (valid, errors);
         }
 
@@ -98,7 +103,35 @@ namespace DeliveryQuoteEngine
         }
 
         public static decimal StandardPolicy(DeliveryRequest r) => 500m + 100m * (decimal)r.DistanceKm;
-
         public static decimal ExpressPolicy(DeliveryRequest r) => 800m + 150m * (decimal)r.DistanceKm;
+    }
+
+    public static class Program
+    {
+        static readonly string[] RawRequests =
+        {
+            "R001|Alice|5.0|3.0",
+            "R002|Bob|2.0|1.5",
+            "R003|Carol|bad|2.0",
+            "R004|Dave|10.0|5.0",
+            "R005|Eve|0.5|0.0"
+        };
+
+        public static void Main()
+        {
+            Console.WriteLine("Standard policy:");
+            PrintSummary(QuoteEngine.RunPipeline(RawRequests, QuoteEngine.StandardPolicy));
+            Console.WriteLine();
+            Console.WriteLine("Express policy:");
+            PrintSummary(QuoteEngine.RunPipeline(RawRequests, QuoteEngine.ExpressPolicy));
+        }
+
+        static void PrintSummary(QuoteSummary s)
+        {
+            foreach (var q in s.Quotes)
+                Console.WriteLine($"  {q.RequestId} {q.CustomerName}: {q.Cost:F2}");
+            Console.WriteLine($"  Total revenue: {s.TotalRevenue:F2}");
+            Console.WriteLine($"  Accepted: {s.AcceptedCount}, Rejected: {s.RejectedCount}");
+        }
     }
 }
