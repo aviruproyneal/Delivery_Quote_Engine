@@ -38,6 +38,21 @@ namespace DeliveryQuoteEngine.Tests
             Check("Two policies differ on the same input",
                 standard.TotalRevenue != express.TotalRevenue);
 
+            // 5. We reject distance below minimum
+            var below = QuoteEngine.RunPipeline(new[] { "B|Test|0.49|1.0" }, QuoteEngine.StandardPolicy);
+            Check("Below minimum: 0.49 km rejected",
+                below.AcceptedCount == 0 && below.RejectedCount == 1);
+
+            // 6. Invalid input - malformed, empty ID, empty name
+            var invalid = QuoteEngine.RunPipeline(new[]
+            {
+                "R1|A|bad|1.0",
+                "|B|2.0|1.0",
+                "R3||2.0|1.0"
+            }, QuoteEngine.StandardPolicy);
+            Check("Invalid: all 3 records rejected",
+                invalid.AcceptedCount == 0 && invalid.RejectedCount == 3);
+
             Console.WriteLine();
             Console.WriteLine($"Passed: {passed}/{total}");
         }

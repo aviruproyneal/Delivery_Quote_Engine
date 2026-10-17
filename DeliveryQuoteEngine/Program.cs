@@ -4,8 +4,66 @@ using System.Globalization;
 
 namespace DeliveryQuoteEngine
 {
+    public sealed record DeliveryRequest(
+        string RequestId,
+        string CustomerName,
+        double DistanceKm,
+        double WeightKg
+    );
+
     public static class QuoteEngine
     {
+        public static (IReadOnlyList<DeliveryRequest> Valid, IReadOnlyList<string> Errors)
+            ParseAndValidate(IEnumerable<string> lines)
+        {
+            var valid = new List<DeliveryRequest>();
+            var errors = new List<string>();
+            int lineNumber = 0;
+
+            foreach (var line in lines)
+            {
+                lineNumber++;
+                if (string.IsNullOrWhiteSpace(line)) continue;
+
+                var parts = line.Split('|');
+                if (parts.Length != 4)
+                {
+                    errors.Add($"Line {lineNumber}: expected 4 fields.");
+                    continue;
+                }
+
+                string id = parts[0].Trim();
+                string name = parts[1].Trim();
+                string distText = parts[2].Trim();
+                string weightText = parts[3].Trim();
+
+                if (id.Length == 0)
+                {
+                    errors.Add($"Line {lineNumber}: RequestId is empty."); continue;
+                }
+
+                if (name.Length == 0)
+                {
+                    errors.Add($"Line {lineNumber}: CustomerName is empty."); continue;
+                }
+
+                if (!double.TryParse(distText, NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out double dist) || dist < 0.5)
+                {
+                    errors.Add($"Line {lineNumber}: distance must be >= 0.5 km."); continue;
+                }
+
+                if (!double.TryParse(weightText, NumberStyles.Float,
+                        CultureInfo.InvariantCulture, out double weight) || weight < 0)
+                {
+                    errors.Add($"Line {lineNumber}: weight must be >= 0."); continue;
+                }
+
+                valid.Add(new DeliveryRequest(id, name, dist, weight));
+            }
+            return (valid, errors);
+        }
+
         public static IReadOnlyList<DeliveryQuote> CalculateQuotes(
             IReadOnlyList<DeliveryRequest> requests,
             Func<DeliveryRequest, decimal> policy)
