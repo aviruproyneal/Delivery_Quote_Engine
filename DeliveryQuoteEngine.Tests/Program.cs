@@ -84,7 +84,19 @@ namespace DeliveryQuoteEngine.Tests
             Console.WriteLine();
 
             // Tests from assignment 6
-    
+
+            // 1. Factory success
+            var (s1, b1, _) = ValidatedBooking.Create("R1", "Alice", 5.0, 3.0);
+            Check("A6 Factory Success: valid input creates a booking", s1 && b1 != null);
+
+            // 2. Factory rejection (invalid distance)
+            var (s2, _, err2) = ValidatedBooking.Create("R2", "Bob", 0.4, 2.0);
+            Check("A6 Factory Rejection: distance < 0.5 rejected", !s2 && err2.Contains("Distance"));
+
+            // 3. Factory rejection (empty name)
+            var (s3, _, err3) = ValidatedBooking.Create("R3", "", 2.0, 1.0);
+            Check("A6 Factory Rejection: empty name rejected", !s3 && err3.Contains("Customer"));
+
             // 6. Normal operation
             var nextState = QuoteEngine.Confirm(pending, 700m);
             Check("A6 Normal Operation: Pending -> Confirmed", nextState is BookingState.Confirmed c && c.Cost == 700m);

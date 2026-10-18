@@ -4,13 +4,7 @@ using System.Globalization;
 
 namespace DeliveryQuoteEngine
 {
-    public sealed record DeliveryRequest(
-        string RequestId,
-        string CustomerName,
-        double DistanceKm,
-        double WeightKg
-    );
-
+    // Models from assignment 5
     public sealed record DeliveryQuote(
         string RequestId,
         string CustomerName,
@@ -24,12 +18,40 @@ namespace DeliveryQuoteEngine
         int RejectedCount
     );
 
+    // Models from assignment 6
+    public sealed class ValidatedBooking
+    {
+        public string RequestId { get; }
+        public string CustomerName { get; }
+        public double DistanceKm { get; }
+        public double WeightKg { get; }
+
+        private ValidatedBooking(string id, string name, double dist, double weight)
+        {
+            RequestId = id;
+            CustomerName = name;
+            DistanceKm = dist;
+            WeightKg = weight;
+        }
+
+        public static (bool Success, ValidatedBooking? Value, string Error) Create(
+            string id, string name, double dist, double weight)
+        {
+            if (string.IsNullOrWhiteSpace(id)) return (false, null, "Request ID can't be empty.");
+            if (string.IsNullOrWhiteSpace(name)) return (false, null, "Customer name can't be empty.");
+            if (dist < 0.5) return (false, null, "Distance must be at least 0.5 km.");
+            if (weight < 0) return (false, null, "Weight must be zero or greater.");
+
+            return (true, new ValidatedBooking(id, name, dist, weight), "");
+        }
+    }
+
     public static class QuoteEngine
     {
-        public static (IReadOnlyList<DeliveryRequest> Valid, IReadOnlyList<string> Errors)
+        public static (IReadOnlyList<ValidatedBooking> Valid, IReadOnlyList<string> Errors)
             ParseAndValidate(IEnumerable<string> lines)
         {
-            var valid = new List<DeliveryRequest>();
+            var valid = new List<ValidatedBooking>();
             var errors = new List<string>();
             int lineNumber = 0;
 
@@ -38,10 +60,10 @@ namespace DeliveryQuoteEngine
                 lineNumber++;
                 if (string.IsNullOrWhiteSpace(line)) continue;
 
-                var parts = line.Split('|');
+                var parts = line.Split("|");
                 if (parts.Length != 4)
                 {
-                    errors.Add($"Line {lineNumber}: expected 4 fields.");
+                    errors.Add($"Line {lineNumber}: 4 fields are required.");
                     continue;
                 }
 
@@ -50,36 +72,31 @@ namespace DeliveryQuoteEngine
                 string distText = parts[2].Trim();
                 string weightText = parts[3].Trim();
 
-                if (id.Length == 0)
+                if (!double.TryParse(distText, NumberStyles.Float, CultureInfo.InvariantCulture, out double dist))
                 {
-                    errors.Add($"Line {lineNumber}: RequestId is empty."); continue;
+                    errors.Add($"Line {lineNumber}: The distance must be numerical.");
+                    continue;
                 }
 
-                if (name.Length == 0)
+                if (!double.TryParse(weightText, NumberStyles.Float, CultureInfo.InvariantCulture, out double weight))
                 {
-                    errors.Add($"Line {lineNumber}: CustomerName is empty."); continue;
+                    errors.Add($"Line {lineNumber}: The weight must be numerical.");
+                    continue;
                 }
 
-                if (!double.TryParse(distText, NumberStyles.Float,
-                        CultureInfo.InvariantCulture, out double dist) || dist < 0.5)
-                {
-                    errors.Add($"Line {lineNumber}: distance must be >= 0.5 km."); continue;
-                }
-
-                if (!double.TryParse(weightText, NumberStyles.Float,
-                        CultureInfo.InvariantCulture, out double weight) || weight < 0)
-                {
-                    errors.Add($"Line {lineNumber}: weight must be >= 0."); continue;
-                }
-
-                valid.Add(new DeliveryRequest(id, name, dist, weight));
+                // Here, we use the new assignment 6 factory
+                var (success, booking, error) = ValidatedBooking.Create(id, name, dist, weight);
+                if (success && booking != null)
+                    valid.Add(booking);
+                else
+                    errors.Add($"Line {lineNumber}: {error}");
             }
             return (valid, errors);
         }
 
         public static IReadOnlyList<DeliveryQuote> CalculateQuotes(
-            IReadOnlyList<DeliveryRequest> requests,
-            Func<DeliveryRequest, decimal> policy)
+            IReadOnlyList<ValidatedBooking> requests,
+            Func<ValidatedBooking, decimal> policy)
         {
             var quotes = new List<DeliveryQuote>();
             foreach (var r in requests)
@@ -97,24 +114,24 @@ namespace DeliveryQuoteEngine
 
         public static QuoteSummary RunPipeline(
             IEnumerable<string> lines,
-            Func<DeliveryRequest, decimal> policy)
+            Func<ValidatedBooking, decimal> policy)
         {
             var (valid, errors) = ParseAndValidate(lines);
             var quotes = CalculateQuotes(valid, policy);
             return BuildSummary(quotes, errors.Count);
         }
 
-        public static decimal StandardPolicy(DeliveryRequest r) => 500m + 100m * (decimal)r.DistanceKm;
+        public static decimal StandardPolicy(ValidatedBooking b) => 500m + (100m * (decimal)b.DistanceKm);
 
-        public static decimal ExpressPolicy(DeliveryRequest r) => 800m + 150m * (decimal)r.DistanceKm;
+        public static decimal ExpressPolicy(ValidatedBooking b) => 800m + (150m * (decimal)b.DistanceKm);
 
         public static BookingState Confirm(BookingState state, decimal cost)
         {
             return state switch
             {
                 BookingState.Pending p => new BookingState.Confirmed(p.Booking, cost),
-                BookingState.Confirmed => state, 
-                BookingState.Cancelled c => c,  
+                BookingState.Confirmed => state,
+                BookingState.Cancelled c => c,
                 _ => throw new ArgumentException("Unknown state")
             };
         }
@@ -124,7 +141,7 @@ namespace DeliveryQuoteEngine
             return state switch
             {
                 BookingState.Pending p => new BookingState.Cancelled(p.Booking, reason),
-                BookingState.Cancelled => state, 
+                BookingState.Cancelled => state,
                 BookingState.Confirmed c => c,
                 _ => throw new ArgumentException("Unknown state")
             };
