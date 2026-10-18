@@ -4,6 +4,7 @@ using System.Globalization;
 
 namespace DeliveryQuoteEngine
 {
+    // Models from assignment 5
     public sealed record DeliveryQuote(
         string RequestId,
         string CustomerName,
@@ -16,7 +17,8 @@ namespace DeliveryQuoteEngine
         int AcceptedCount,
         int RejectedCount
     );
-    
+
+    // Models from assignment 6
     public sealed class ValidatedBooking
     {
         public string RequestId { get; }
@@ -39,7 +41,6 @@ namespace DeliveryQuoteEngine
             if (string.IsNullOrWhiteSpace(name)) return (false, null, "Customer name can't be empty.");
             if (dist < 0.5) return (false, null, "Distance must be at least 0.5 km.");
             if (weight < 0) return (false, null, "Weight must be zero or greater.");
-
             return (true, new ValidatedBooking(id, name, dist, weight), "");
         }
     }
@@ -89,13 +90,14 @@ namespace DeliveryQuoteEngine
                     errors.Add($"Line {lineNumber}: The weight must be numerical.");
                     continue;
                 }
-                
+
                 var (success, booking, error) = ValidatedBooking.Create(id, name, dist, weight);
                 if (success && booking != null)
                     valid.Add(booking);
                 else
                     errors.Add($"Line {lineNumber}: {error}");
             }
+
             return (valid, errors);
         }
 
@@ -127,7 +129,6 @@ namespace DeliveryQuoteEngine
         }
 
         public static decimal StandardPolicy(ValidatedBooking b) => 500m + (100m * (decimal)b.DistanceKm);
-
         public static decimal ExpressPolicy(ValidatedBooking b) => 800m + (150m * (decimal)b.DistanceKm);
 
         public static BookingState Confirm(BookingState state, decimal cost)
@@ -135,8 +136,8 @@ namespace DeliveryQuoteEngine
             return state switch
             {
                 BookingState.Pending p => new BookingState.Confirmed(p.Booking, cost),
-                BookingState.Confirmed => state, 
-                BookingState.Cancelled c => c,  
+                BookingState.Confirmed => state,
+                BookingState.Cancelled c => c,
                 _ => throw new ArgumentException("Unknown state")
             };
         }
@@ -146,7 +147,7 @@ namespace DeliveryQuoteEngine
             return state switch
             {
                 BookingState.Pending p => new BookingState.Cancelled(p.Booking, reason),
-                BookingState.Cancelled => state, 
+                BookingState.Cancelled => state,
                 BookingState.Confirmed c => c,
                 _ => throw new ArgumentException("Unknown state")
             };
@@ -166,20 +167,33 @@ namespace DeliveryQuoteEngine
 
         public static void Main()
         {
-            Console.WriteLine("Standard policy:");
-            PrintSummary(QuoteEngine.RunPipeline(RawRequests, QuoteEngine.StandardPolicy));
+            Console.WriteLine("1. Quote Summary (Assignment 5)");
+            var summary = QuoteEngine.RunPipeline(RawRequests, QuoteEngine.StandardPolicy);
+            Console.WriteLine($"Total Revenue: {summary.TotalRevenue:F2}");
+            Console.WriteLine($"Accepted: {summary.AcceptedCount}, Rejected: {summary.RejectedCount}\n");
 
-            Console.WriteLine();
-            Console.WriteLine("Express policy:");
-            PrintSummary(QuoteEngine.RunPipeline(RawRequests, QuoteEngine.ExpressPolicy));
-        }
+            Console.WriteLine("2. Booking State Machine (Assignment 6)");
+            var (validBookings, errors) = QuoteEngine.ParseAndValidate(RawRequests);
 
-        static void PrintSummary(QuoteSummary s)
-        {
-            foreach (var q in s.Quotes)
-                Console.WriteLine($"  {q.RequestId} {q.CustomerName}: {q.Cost:F2}");
-            Console.WriteLine($"  Total revenue: {s.TotalRevenue:F2}");
-            Console.WriteLine($"  Accepted: {s.AcceptedCount}, Rejected: {s.RejectedCount}");
+            foreach (var err in errors)
+                Console.WriteLine($"[Error] {err}");
+
+            foreach (var booking in validBookings)
+            {
+                BookingState state = new BookingState.Pending(booking);
+                decimal cost = QuoteEngine.StandardPolicy(booking);
+                state = QuoteEngine.Confirm(state, cost);
+
+                string output = state switch
+                {
+                    BookingState.Pending p => $"Pending: {p.Booking.RequestId}",
+                    BookingState.Confirmed c => $"Confirmed: {c.Booking.RequestId} {c.Booking.CustomerName} Total: {c.Cost:F2}",
+                    BookingState.Cancelled x => $"Cancelled: {x.Booking.RequestId} Reason: {x.Reason}",
+                    _ => "Unknown"
+                };
+
+                Console.WriteLine(output);
+            }
         }
     }
 }
