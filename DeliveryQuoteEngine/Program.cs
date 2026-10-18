@@ -54,15 +54,18 @@ namespace DeliveryQuoteEngine
                 {
                     errors.Add($"Line {lineNumber}: RequestId is empty."); continue;
                 }
+
                 if (name.Length == 0)
                 {
                     errors.Add($"Line {lineNumber}: CustomerName is empty."); continue;
                 }
+
                 if (!double.TryParse(distText, NumberStyles.Float,
                         CultureInfo.InvariantCulture, out double dist) || dist < 0.5)
                 {
                     errors.Add($"Line {lineNumber}: distance must be >= 0.5 km."); continue;
                 }
+
                 if (!double.TryParse(weightText, NumberStyles.Float,
                         CultureInfo.InvariantCulture, out double weight) || weight < 0)
                 {
@@ -71,7 +74,6 @@ namespace DeliveryQuoteEngine
 
                 valid.Add(new DeliveryRequest(id, name, dist, weight));
             }
-
             return (valid, errors);
         }
 
@@ -103,7 +105,30 @@ namespace DeliveryQuoteEngine
         }
 
         public static decimal StandardPolicy(DeliveryRequest r) => 500m + 100m * (decimal)r.DistanceKm;
+
         public static decimal ExpressPolicy(DeliveryRequest r) => 800m + 150m * (decimal)r.DistanceKm;
+
+        public static BookingState Confirm(BookingState state, decimal cost)
+        {
+            return state switch
+            {
+                BookingState.Pending p => new BookingState.Confirmed(p.Booking, cost),
+                BookingState.Confirmed => state, 
+                BookingState.Cancelled c => c,  
+                _ => throw new ArgumentException("Unknown state")
+            };
+        }
+
+        public static BookingState Cancel(BookingState state, string reason)
+        {
+            return state switch
+            {
+                BookingState.Pending p => new BookingState.Cancelled(p.Booking, reason),
+                BookingState.Cancelled => state, 
+                BookingState.Confirmed c => c,
+                _ => throw new ArgumentException("Unknown state")
+            };
+        }
     }
 
     public static class Program
@@ -121,6 +146,7 @@ namespace DeliveryQuoteEngine
         {
             Console.WriteLine("Standard policy:");
             PrintSummary(QuoteEngine.RunPipeline(RawRequests, QuoteEngine.StandardPolicy));
+
             Console.WriteLine();
             Console.WriteLine("Express policy:");
             PrintSummary(QuoteEngine.RunPipeline(RawRequests, QuoteEngine.ExpressPolicy));
