@@ -4,7 +4,6 @@ using System.Globalization;
 
 namespace DeliveryQuoteEngine
 {
-    // Models from assignment 5
     public sealed record DeliveryQuote(
         string RequestId,
         string CustomerName,
@@ -17,8 +16,7 @@ namespace DeliveryQuoteEngine
         int AcceptedCount,
         int RejectedCount
     );
-
-    // Models from assignment 6
+    
     public sealed class ValidatedBooking
     {
         public string RequestId { get; }
@@ -44,6 +42,14 @@ namespace DeliveryQuoteEngine
 
             return (true, new ValidatedBooking(id, name, dist, weight), "");
         }
+    }
+
+    public abstract record BookingState
+    {
+        private protected BookingState() { }
+        public sealed record Pending(ValidatedBooking Booking) : BookingState;
+        public sealed record Confirmed(ValidatedBooking Booking, decimal Cost) : BookingState;
+        public sealed record Cancelled(ValidatedBooking Booking, string Reason) : BookingState;
     }
 
     public static class QuoteEngine
@@ -83,8 +89,7 @@ namespace DeliveryQuoteEngine
                     errors.Add($"Line {lineNumber}: The weight must be numerical.");
                     continue;
                 }
-
-                // Here, we use the new assignment 6 factory
+                
                 var (success, booking, error) = ValidatedBooking.Create(id, name, dist, weight);
                 if (success && booking != null)
                     valid.Add(booking);
@@ -130,8 +135,8 @@ namespace DeliveryQuoteEngine
             return state switch
             {
                 BookingState.Pending p => new BookingState.Confirmed(p.Booking, cost),
-                BookingState.Confirmed => state,
-                BookingState.Cancelled c => c,
+                BookingState.Confirmed => state, 
+                BookingState.Cancelled c => c,  
                 _ => throw new ArgumentException("Unknown state")
             };
         }
@@ -141,7 +146,7 @@ namespace DeliveryQuoteEngine
             return state switch
             {
                 BookingState.Pending p => new BookingState.Cancelled(p.Booking, reason),
-                BookingState.Cancelled => state,
+                BookingState.Cancelled => state, 
                 BookingState.Confirmed c => c,
                 _ => throw new ArgumentException("Unknown state")
             };
