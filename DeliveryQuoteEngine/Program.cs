@@ -28,8 +28,18 @@ namespace DeliveryQuoteEngine
         };
     }
 
-    public sealed record DeliveryQuote(string RequestId, string CustomerName, decimal Cost);
-    public sealed record QuoteSummary(IReadOnlyList<DeliveryQuote> Quotes, decimal TotalRevenue, int AcceptedCount, int RejectedCount);
+    public sealed record DeliveryQuote(
+        string RequestId,
+        string CustomerName,
+        decimal Cost
+    );
+
+    public sealed record QuoteSummary(
+        IReadOnlyList<DeliveryQuote> Quotes,
+        decimal TotalRevenue,
+        int AcceptedCount,
+        int RejectedCount
+    );
 
     public sealed class ValidatedBooking
     {
@@ -40,15 +50,20 @@ namespace DeliveryQuoteEngine
 
         private ValidatedBooking(string id, string name, double dist, double weight)
         {
-            RequestId = id; CustomerName = name; DistanceKm = dist; WeightKg = weight;
+            RequestId = id;
+            CustomerName = name;
+            DistanceKm = dist;
+            WeightKg = weight;
         }
 
-        public static (bool Success, ValidatedBooking? Value, string Error) Create(string id, string name, double dist, double weight)
+        public static (bool Success, ValidatedBooking? Value, string Error) Create(
+            string id, string name, double dist, double weight)
         {
             if (string.IsNullOrWhiteSpace(id)) return (false, null, "Request ID can't be empty.");
             if (string.IsNullOrWhiteSpace(name)) return (false, null, "Customer name can't be empty.");
             if (dist < 0.5) return (false, null, "Distance must be at least 0.5 km.");
             if (weight < 0) return (false, null, "Weight must be zero or greater.");
+
             return (true, new ValidatedBooking(id, name, dist, weight), "");
         }
     }
@@ -63,47 +78,80 @@ namespace DeliveryQuoteEngine
 
     public static class QuoteEngine
     {
-        public static (IReadOnlyList<ValidatedBooking> Valid, IReadOnlyList<string> Errors) ParseAndValidate(IEnumerable<string> lines)
+        public static (IReadOnlyList<ValidatedBooking> Valid, IReadOnlyList<string> Errors)
+            ParseAndValidate(IEnumerable<string> lines)
         {
             var valid = new List<ValidatedBooking>();
             var errors = new List<string>();
             int lineNumber = 0;
+
             foreach (var line in lines)
             {
                 lineNumber++;
                 if (string.IsNullOrWhiteSpace(line)) continue;
+
                 var parts = line.Split("|");
-                if (parts.Length != 4) { errors.Add($"Line {lineNumber}: 4 fields required."); continue; }
-                if (!double.TryParse(parts[2].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double dist)) { errors.Add($"Line {lineNumber}: Invalid distance."); continue; }
-                if (!double.TryParse(parts[3].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double weight)) { errors.Add($"Line {lineNumber}: Invalid weight."); continue; }
-                var (success, booking, error) = ValidatedBooking.Create(parts[0].Trim(), parts[1].Trim(), dist, weight);
-                if (success && booking != null) valid.Add(booking);
-                else errors.Add($"Line {lineNumber}: {error}");
+                if (parts.Length != 4)
+                {
+                    errors.Add($"Line {lineNumber}: 4 fields are required.");
+                    continue;
+                }
+
+                string id = parts[0].Trim();
+                string name = parts[1].Trim();
+                string distText = parts[2].Trim();
+                string weightText = parts[3].Trim();
+
+                if (!double.TryParse(distText, NumberStyles.Float, CultureInfo.InvariantCulture, out double dist))
+                {
+                    errors.Add($"Line {lineNumber}: The distance must be numerical.");
+                    continue;
+                }
+
+                if (!double.TryParse(weightText, NumberStyles.Float, CultureInfo.InvariantCulture, out double weight))
+                {
+                    errors.Add($"Line {lineNumber}: The weight must be numerical.");
+                    continue;
+                }
+
+                var (success, booking, error) = ValidatedBooking.Create(id, name, dist, weight);
+                if (success && booking != null)
+                    valid.Add(booking);
+                else
+                    errors.Add($"Line {lineNumber}: {error}");
             }
             return (valid, errors);
         }
 
-        public static IReadOnlyList<DeliveryQuote> CalculateQuotes(IReadOnlyList<ValidatedBooking> requests, Func<ValidatedBooking, decimal> policy)
+        public static IReadOnlyList<DeliveryQuote> CalculateQuotes(
+            IReadOnlyList<ValidatedBooking> requests,
+            Func<ValidatedBooking, decimal> policy)
         {
             var quotes = new List<DeliveryQuote>();
-            foreach (var r in requests) quotes.Add(new DeliveryQuote(r.RequestId, r.CustomerName, policy(r)));
+            foreach (var r in requests)
+                quotes.Add(new DeliveryQuote(r.RequestId, r.CustomerName, policy(r)));
             return quotes;
         }
 
-        public static QuoteSummary BuildSummary(IReadOnlyList<DeliveryQuote> quotes, int rejectedCount)
+        public static QuoteSummary BuildSummary(
+            IReadOnlyList<DeliveryQuote> quotes, int rejectedCount)
         {
             decimal total = 0m;
             foreach (var q in quotes) total += q.Cost;
             return new QuoteSummary(quotes, total, quotes.Count, rejectedCount);
         }
 
-        public static QuoteSummary RunPipeline(IEnumerable<string> lines, Func<ValidatedBooking, decimal> policy)
+        public static QuoteSummary RunPipeline(
+            IEnumerable<string> lines,
+            Func<ValidatedBooking, decimal> policy)
         {
             var (valid, errors) = ParseAndValidate(lines);
-            return BuildSummary(CalculateQuotes(valid, policy), errors.Count);
+            var quotes = CalculateQuotes(valid, policy);
+            return BuildSummary(quotes, errors.Count);
         }
 
         public static decimal StandardPolicy(ValidatedBooking b) => 500m + (100m * (decimal)b.DistanceKm);
+
         public static decimal ExpressPolicy(ValidatedBooking b) => 800m + (150m * (decimal)b.DistanceKm);
 
         public static BookingState Confirm(BookingState state, decimal cost)
@@ -132,7 +180,9 @@ namespace DeliveryQuoteEngine
         {
             var maybe = FindBooking(repo, id);
             if (maybe is Maybe<ValidatedBooking>.None) return new Result<string, string>.Fail($"Booking {id} not found.");
+
             var booking = ((Maybe<ValidatedBooking>.Some)maybe).Value;
+
             return new Result<BookingState, string>.Ok(new BookingState.Pending(booking))
                 .Bind(state => Confirm(state, StandardPolicy(booking)))
                 .Map(state =>
@@ -145,31 +195,31 @@ namespace DeliveryQuoteEngine
 
     public static class Program
     {
-        static readonly string[] RawRequests = { "R001|Alice|5.0|3.0", "R002|Bob|2.0|1.5", "R003|Carol|bad|2.0", "R004|Dave|10.0|5.0", "R005|Eve|0.5|0.0" };
+        static readonly string[] RawRequests =
+        {
+            "R001|Alice|5.0|3.0",
+            "R002|Bob|2.0|1.5",
+            "R003|Carol|bad|2.0",
+            "R004|Dave|10.0|5.0",
+            "R005|Eve|0.5|0.0"
+        };
 
         public static void Main()
         {
-            Console.WriteLine("1. Quote Summary (Assignment 5)");
-            var summary = QuoteEngine.RunPipeline(RawRequests, QuoteEngine.StandardPolicy);
-            Console.WriteLine($"Total Revenue: {summary.TotalRevenue:F2}");
-            Console.WriteLine($"Accepted: {summary.AcceptedCount}, Rejected: {summary.RejectedCount}\n");
+            Console.WriteLine("Standard policy:");
+            PrintSummary(QuoteEngine.RunPipeline(RawRequests, QuoteEngine.StandardPolicy));
 
-            Console.WriteLine("2. Booking State Machine (Assignment 6)");
-            var (validBookings, errors) = QuoteEngine.ParseAndValidate(RawRequests);
-            foreach (var err in errors) Console.WriteLine($"[Error] {err}");
+            Console.WriteLine();
+            Console.WriteLine("Express policy:");
+            PrintSummary(QuoteEngine.RunPipeline(RawRequests, QuoteEngine.ExpressPolicy));
+        }
 
-            foreach (var booking in validBookings)
-            {
-                var state = QuoteEngine.Confirm(new BookingState.Pending(booking), QuoteEngine.StandardPolicy(booking));
-                string output = state switch
-                {
-                    BookingState.Pending p => $"Pending: {p.Booking.RequestId}",
-                    BookingState.Confirmed c => $"Confirmed: {c.Booking.RequestId} {c.Booking.CustomerName} - Total: {c.Cost:F2}",
-                    BookingState.Cancelled x => $"Cancelled: {x.Booking.RequestId} - Reason: {x.Reason}",
-                    _ => "Unknown"
-                };
-                Console.WriteLine(output);
-            }
+        static void PrintSummary(QuoteSummary s)
+        {
+            foreach (var q in s.Quotes)
+                Console.WriteLine($"  {q.RequestId} {q.CustomerName}: {q.Cost:F2}");
+            Console.WriteLine($"  Total revenue: {s.TotalRevenue:F2}");
+            Console.WriteLine($"  Accepted: {s.AcceptedCount}, Rejected: {s.RejectedCount}");
         }
     }
 }
