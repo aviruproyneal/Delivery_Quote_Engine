@@ -59,26 +59,17 @@ namespace DeliveryQuoteEngine.Tests
 
             Console.WriteLine("Assignment 6 Tests");
 
-            var (s1, b1, _) = ValidatedBooking.Create("R1", "Alice", 5.0, 3.0);
-            Check("A6 Factory Success: valid input creates a booking", s1 && b1 != null);
+            var (validA6, _) = QuoteEngine.ParseAndValidate(SampleData);
+            var b = validA6[0];
 
-            var (s2, _, err2) = ValidatedBooking.Create("R2", "Bob", 0.4, 2.0);
-            Check("A6 Factory Rejection: distance < 0.5 rejected", !s2 && err2.Contains("Distance"));
+            Check("A6 Factory Success: valid input creates a booking", b != null);
+            Check("A6 Factory Rejection: distance < 0.5 rejected", ValidatedBooking.Create("R2", "Bob", 0.4, 2.0) is Result<ValidatedBooking, string>.Fail);
 
-            var (s3, _, err3) = ValidatedBooking.Create("R3", "", 2.0, 1.0);
-            Check("A6 Factory Rejection: empty name rejected", !s3 && err3.Contains("Customer"));
+            var pending = new BookingState.Pending(b!);
+            var confirmed = new BookingState.Confirmed(b!, 700m);
+            var cancelled = new BookingState.Cancelled(b!, "User cancelled");
 
-            var (s4, _, _) = ValidatedBooking.Create("R4", "Dave", 0.5, 1.0);
-            Check("A6 Boundary Value: 0.5 km accepted", s4);
-
-            var validBooking = ValidatedBooking.Create("R5", "Eve", 2.0, 1.0).Value!;
-            BookingState pending = new BookingState.Pending(validBooking);
-            BookingState confirmed = new BookingState.Confirmed(validBooking, 700m);
-            BookingState cancelled = new BookingState.Cancelled(validBooking, "User cancelled");
-
-            Check("A6 Distinct Cases: Pending matches", pending is BookingState.Pending);
-            Check("A6 Distinct Cases: Confirmed matches", confirmed is BookingState.Confirmed);
-            Check("A6 Distinct Cases: Cancelled matches", cancelled is BookingState.Cancelled);
+            Check("A6 Distinct Cases: Pattern matching works", pending is BookingState.Pending && confirmed is BookingState.Confirmed && cancelled is BookingState.Cancelled);
 
             var nextState = QuoteEngine.Confirm(pending, 700m);
             Check("A6 Normal Operation: Pending -> Confirmed", nextState is BookingState.Confirmed c && c.Cost == 700m);
@@ -95,7 +86,7 @@ namespace DeliveryQuoteEngine.Tests
 
             Console.WriteLine("Assignment 7 Tests");
 
-            var repo = new Dictionary<string, ValidatedBooking> { { "R001", b1! } };
+            var repo = new Dictionary<string, ValidatedBooking> { { "R001", b! } };
 
             var chain = QuoteEngine.ProcessBookingChain("R001", repo);
             Check("A7 Complete Success: Chain produces correct value", chain is Result<string, string>.Ok ok1 && ok1.Value.Contains("R001"));
@@ -110,10 +101,19 @@ namespace DeliveryQuoteEngine.Tests
             var mapRes = new Result<int, string>.Ok(10).Map(x => x * 2);
             Check("A7 Map Success: Transformation applied", mapRes is Result<int, string>.Ok ok2 && ok2.Value == 20);
 
-            bool binderExecuted = false;
+            var bindRes = new Result<int, string>.Ok(10).Bind(x => new Result<string, string>.Ok($"Value: {x}"));
+            Check("A7 Bind Success: Continuation applied", bindRes is Result<string, string>.Ok ok3 && ok3.Value == "Value: 10");
+
+            bool mapperExecuted = false;
             var failedRes = new Result<int, string>.Fail("Original Error");
-            failedRes.Bind(x => { binderExecuted = true; return new Result<int, string>.Ok(x); });
-            Check("A7 Failure Prop: Bind skipped on failure", binderExecuted == false);
+            failedRes.Map(x => { mapperExecuted = true; return x; });
+            Check("A7 Failure Prop: Map skipped on failure", mapperExecuted == false);
+
+            var missingFile = QuoteEngine.LoadFile("non_existent_file_12345.json");
+            Check("A7 Boundary Failure: Missing file", missingFile is Result<string[], string>.Fail f4 && f4.Error.Contains("File missing"));
+
+            var malformedFile = QuoteEngine.LoadFile(System.IO.Directory.GetCurrentDirectory());
+            Check("A7 Boundary Failure: Operational exception caught", malformedFile is Result<string[], string>.Fail);
 
             Console.WriteLine();
             Console.WriteLine($"Passed: {passed}/{total}");

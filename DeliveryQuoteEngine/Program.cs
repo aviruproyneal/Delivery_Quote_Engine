@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 
 namespace DeliveryQuoteEngine
 {
@@ -56,15 +57,14 @@ namespace DeliveryQuoteEngine
             WeightKg = weight;
         }
 
-        public static (bool Success, ValidatedBooking? Value, string Error) Create(
-            string id, string name, double dist, double weight)
+        public static Result<ValidatedBooking, string> Create(string id, string name, double dist, double weight)
         {
-            if (string.IsNullOrWhiteSpace(id)) return (false, null, "Request ID can't be empty.");
-            if (string.IsNullOrWhiteSpace(name)) return (false, null, "Customer name can't be empty.");
-            if (dist < 0.5) return (false, null, "Distance must be at least 0.5 km.");
-            if (weight < 0) return (false, null, "Weight must be zero or greater.");
+            if (string.IsNullOrWhiteSpace(id)) return new Result<ValidatedBooking, string>.Fail("Request ID can't be empty.");
+            if (string.IsNullOrWhiteSpace(name)) return new Result<ValidatedBooking, string>.Fail("Customer name can't be empty.");
+            if (dist < 0.5) return new Result<ValidatedBooking, string>.Fail("Distance must be at least 0.5 km.");
+            if (weight < 0) return new Result<ValidatedBooking, string>.Fail("Weight must be zero or greater.");
 
-            return (true, new ValidatedBooking(id, name, dist, weight), "");
+            return new Result<ValidatedBooking, string>.Ok(new ValidatedBooking(id, name, dist, weight));
         }
     }
 
@@ -93,32 +93,25 @@ namespace DeliveryQuoteEngine
                 var parts = line.Split("|");
                 if (parts.Length != 4)
                 {
-                    errors.Add($"Line {lineNumber}: 4 fields are required.");
+                    errors.Add($"Line {lineNumber}: 4 fields required.");
                     continue;
                 }
 
-                string id = parts[0].Trim();
-                string name = parts[1].Trim();
-                string distText = parts[2].Trim();
-                string weightText = parts[3].Trim();
-
-                if (!double.TryParse(distText, NumberStyles.Float, CultureInfo.InvariantCulture, out double dist))
+                if (!double.TryParse(parts[2].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double dist))
                 {
-                    errors.Add($"Line {lineNumber}: The distance must be numerical.");
+                    errors.Add($"Line {lineNumber}: Invalid distance.");
                     continue;
                 }
 
-                if (!double.TryParse(weightText, NumberStyles.Float, CultureInfo.InvariantCulture, out double weight))
+                if (!double.TryParse(parts[3].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double weight))
                 {
-                    errors.Add($"Line {lineNumber}: The weight must be numerical.");
+                    errors.Add($"Line {lineNumber}: Invalid weight.");
                     continue;
                 }
 
-                var (success, booking, error) = ValidatedBooking.Create(id, name, dist, weight);
-                if (success && booking != null)
-                    valid.Add(booking);
-                else
-                    errors.Add($"Line {lineNumber}: {error}");
+                var result = ValidatedBooking.Create(parts[0].Trim(), parts[1].Trim(), dist, weight);
+                if (result is Result<ValidatedBooking, string>.Ok ok) valid.Add(ok.Value);
+                else errors.Add($"Line {lineNumber}: {((Result<ValidatedBooking, string>.Fail)result).Error}");
             }
             return (valid, errors);
         }
@@ -190,6 +183,20 @@ namespace DeliveryQuoteEngine
                     var c = (BookingState.Confirmed)state;
                     return $"Confirmed: {c.Booking.RequestId} {c.Booking.CustomerName} - Total: {c.Cost:F2}";
                 });
+        }
+
+        public static Result<string[], string> LoadFile(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return new Result<string[], string>.Fail("File missing.");
+                string[] lines = File.ReadAllLines(path);
+                return new Result<string[], string>.Ok(lines);
+            }
+            catch (Exception ex)
+            {
+                return new Result<string[], string>.Fail($"Error: {ex.Message}");
+            }
         }
     }
 
