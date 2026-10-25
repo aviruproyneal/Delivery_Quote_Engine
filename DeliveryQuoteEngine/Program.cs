@@ -12,6 +12,13 @@ namespace DeliveryQuoteEngine
         public sealed record Fail(E Error) : Result<T, E>;
     }
 
+    public abstract record Maybe<T>
+    {
+        private protected Maybe() { }
+        public sealed record Some(T Value) : Maybe<T>;
+        public sealed record None : Maybe<T>;
+    }
+
     public static class ResultExtensions
     {
         public static Result<U, E> Map<T, U, E>(this Result<T, E> result, Func<T, U> mapper) => result switch
@@ -63,7 +70,6 @@ namespace DeliveryQuoteEngine
             if (string.IsNullOrWhiteSpace(name)) return new Result<ValidatedBooking, string>.Fail("Customer name can't be empty.");
             if (dist < 0.5) return new Result<ValidatedBooking, string>.Fail("Distance must be at least 0.5 km.");
             if (weight < 0) return new Result<ValidatedBooking, string>.Fail("Weight must be zero or greater.");
-
             return new Result<ValidatedBooking, string>.Ok(new ValidatedBooking(id, name, dist, weight));
         }
     }
@@ -113,6 +119,7 @@ namespace DeliveryQuoteEngine
                 if (result is Result<ValidatedBooking, string>.Ok ok) valid.Add(ok.Value);
                 else errors.Add($"Line {lineNumber}: {((Result<ValidatedBooking, string>.Fail)result).Error}");
             }
+
             return (valid, errors);
         }
 
@@ -144,7 +151,6 @@ namespace DeliveryQuoteEngine
         }
 
         public static decimal StandardPolicy(ValidatedBooking b) => 500m + (100m * (decimal)b.DistanceKm);
-
         public static decimal ExpressPolicy(ValidatedBooking b) => 800m + (150m * (decimal)b.DistanceKm);
 
         public static BookingState Confirm(BookingState state, decimal cost)
@@ -173,7 +179,6 @@ namespace DeliveryQuoteEngine
         {
             var maybe = FindBooking(repo, id);
             if (maybe is Maybe<ValidatedBooking>.None) return new Result<string, string>.Fail($"Booking {id} not found.");
-
             var booking = ((Maybe<ValidatedBooking>.Some)maybe).Value;
 
             return new Result<BookingState, string>.Ok(new BookingState.Pending(booking))
@@ -181,7 +186,7 @@ namespace DeliveryQuoteEngine
                 .Map(state =>
                 {
                     var c = (BookingState.Confirmed)state;
-                    return $"Confirmed: {c.Booking.RequestId} {c.Booking.CustomerName} - Total: {c.Cost:F2}";
+                    return $"Confirmed: {c.Booking.RequestId} {c.Booking.CustomerName} Total: {c.Cost:F2}";
                 });
         }
 
@@ -197,6 +202,12 @@ namespace DeliveryQuoteEngine
             {
                 return new Result<string[], string>.Fail($"Error: {ex.Message}");
             }
+        }
+
+        public static Maybe<ValidatedBooking> FindBooking(Dictionary<string, ValidatedBooking> repo, string id)
+        {
+            if (repo.ContainsKey(id)) return new Maybe<ValidatedBooking>.Some(repo[id]);
+            return new Maybe<ValidatedBooking>.None();
         }
     }
 
@@ -215,7 +226,6 @@ namespace DeliveryQuoteEngine
         {
             Console.WriteLine("Standard policy:");
             PrintSummary(QuoteEngine.RunPipeline(RawRequests, QuoteEngine.StandardPolicy));
-
             Console.WriteLine();
             Console.WriteLine("Express policy:");
             PrintSummary(QuoteEngine.RunPipeline(RawRequests, QuoteEngine.ExpressPolicy));

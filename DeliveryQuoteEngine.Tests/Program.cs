@@ -27,7 +27,6 @@ namespace DeliveryQuoteEngine.Tests
         public static void Main()
         {
             Console.WriteLine("Assignment 5 Tests");
-
             var standard = QuoteEngine.RunPipeline(SampleData, QuoteEngine.StandardPolicy);
             Check("A5 Normal: 4 valid, 1 invalid, Standard total = 3750", standard.AcceptedCount == 4 && standard.RejectedCount == 1 && standard.TotalRevenue == 3750m);
 
@@ -56,19 +55,15 @@ namespace DeliveryQuoteEngine.Tests
             Check("A5 Purity: input collection unchanged", input.Count == originalCount && input[0] == originalFirst);
 
             Console.WriteLine();
-
             Console.WriteLine("Assignment 6 Tests");
-
             var (validA6, _) = QuoteEngine.ParseAndValidate(SampleData);
             var b = validA6[0];
-
             Check("A6 Factory Success: valid input creates a booking", b != null);
             Check("A6 Factory Rejection: distance < 0.5 rejected", ValidatedBooking.Create("R2", "Bob", 0.4, 2.0) is Result<ValidatedBooking, string>.Fail);
 
             var pending = new BookingState.Pending(b!);
             var confirmed = new BookingState.Confirmed(b!, 700m);
             var cancelled = new BookingState.Cancelled(b!, "User cancelled");
-
             Check("A6 Distinct Cases: Pattern matching works", pending is BookingState.Pending && confirmed is BookingState.Confirmed && cancelled is BookingState.Cancelled);
 
             var nextState = QuoteEngine.Confirm(pending, 700m);
@@ -83,13 +78,13 @@ namespace DeliveryQuoteEngine.Tests
             Check("A6 State Preservation: original cancelled state preserved", ReferenceEquals(cancelled, failedConfirm));
 
             Console.WriteLine();
-
             Console.WriteLine("Assignment 7 Tests");
-
             var repo = new Dictionary<string, ValidatedBooking> { { "R001", b! } };
-
             var chain = QuoteEngine.ProcessBookingChain("R001", repo);
             Check("A7 Complete Success: Chain produces correct value", chain is Result<string, string>.Ok ok1 && ok1.Value.Contains("R001"));
+
+            var badCreate = ValidatedBooking.Create("R2", "Bob", 0.4, 2.0);
+            Check("A7 Domain Failure 2: Invalid quantity", badCreate is Result<ValidatedBooking, string>.Fail f2 && f2.Error.Contains("Distance"));
 
             var stateFail = QuoteEngine.Confirm(cancelled, 100m);
             Check("A7 Domain Failure 3: Rejected transition", stateFail is Result<BookingState, string>.Fail f3 && f3.Error.Contains("cancelled"));
