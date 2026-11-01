@@ -147,6 +147,10 @@ namespace DeliveryQuoteEngine.Tests
             var okState = new Result<BookingState, string>.Ok(new BookingState.Pending(b1!));
             Check("A8 Test 2: Extension: ToFormattedString formats Ok", okState.ToFormattedString().StartsWith("Success"));
 
+            var standardPolicy = QuoteEngine.MakePricingPolicy(500m)(100m);
+            var expressPolicy = QuoteEngine.MakePricingPolicy(800m)(150m);
+            Check("A8 Test 3: Currying: Standard and Express policies differ", standardPolicy(5.0) != expressPolicy(5.0));
+
             var multiQuotes = new List<DeliveryQuote>
             {
                 new DeliveryQuote("R1", "Alice", 1000m),
@@ -161,6 +165,16 @@ namespace DeliveryQuoteEngine.Tests
             Check("A8 Test 5: Report 2: Filters by distance and sorts", highValue.Count == 1 && highValue[0].StartsWith("R1"));
 
             Check("A8 Test 6: Reports: Empty dataset returns empty list", QuoteEngine.ReportRevenueByCustomer(new List<DeliveryQuote>()).Count == 0);
+
+            var probe = new List<string>();
+            var deferred = QuoteEngine.YieldValidBookings(new List<ValidatedBooking> { b1! }, probe);
+            Check("A8 Test 7: Deferred: No processing before iteration", probe.Count == 0);
+
+            foreach (var b in deferred) { }
+            Check("A8 Test 8: Deferred: Processing occurs during iteration", probe.Count == 1);
+
+            var snapshot = deferred.ToList();
+            Check("A8 Test 9: Deferred: Snapshot materialized successfully", snapshot.Count == 1);
 
             Console.WriteLine();
             Console.WriteLine($"Passed: {passed}/{total}");

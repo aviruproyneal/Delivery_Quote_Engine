@@ -70,7 +70,7 @@ namespace DeliveryQuoteEngine
             if (string.IsNullOrWhiteSpace(name)) return new Result<ValidatedBooking, string>.Fail("Customer name can't be empty.");
             if (dist < 0.5) return new Result<ValidatedBooking, string>.Fail("Distance must be at least 0.5 km.");
             if (weight < 0) return new Result<ValidatedBooking, string>.Fail("Weight must be zero or greater.");
-            
+
             return new Result<ValidatedBooking, string>.Ok(new ValidatedBooking(id, name, dist, weight));
         }
     }
@@ -107,6 +107,9 @@ namespace DeliveryQuoteEngine
             }
             return (valid, errors);
         }
+
+        public static Func<decimal, Func<double, decimal>> MakePricingPolicy(decimal baseFee) =>
+            rate => distance => baseFee + (rate * (decimal)distance);
 
         public static IReadOnlyList<DeliveryQuote> CalculateQuotes(IReadOnlyList<ValidatedBooking> requests, Func<ValidatedBooking, decimal> policy)
         {
@@ -154,8 +157,11 @@ namespace DeliveryQuoteEngine
             try
             {
                 if (!File.Exists(path)) return new Result<string[], string>.Fail("File missing.");
-                string[] lines = File.ReadAllLines(path);
-                return new Result<string[], string>.Ok(lines);
+                using var reader = new StreamReader(path);
+                var lines = new List<string>();
+                string? line;
+                while ((line = reader.ReadLine()) != null) lines.Add(line);
+                return new Result<string[], string>.Ok(lines.ToArray());
             }
             catch (Exception ex)
             {
@@ -177,6 +183,15 @@ namespace DeliveryQuoteEngine
                     var c = (BookingState.Confirmed)state;
                     return $"Confirmed: {c.Booking.RequestId} {c.Booking.CustomerName} - Total: {c.Cost:F2}";
                 });
+        }
+
+        public static IEnumerable<ValidatedBooking> YieldValidBookings(IEnumerable<ValidatedBooking> bookings, List<string>? probe = null)
+        {
+            foreach (var b in bookings)
+            {
+                probe?.Add($"Processing {b.RequestId}");
+                yield return b;
+            }
         }
 
         public static List<string> ReportRevenueByCustomer(IEnumerable<DeliveryQuote> quotes) =>
