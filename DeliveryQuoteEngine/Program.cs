@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.Linq;
 
 namespace DeliveryQuoteEngine
 {
@@ -36,6 +37,18 @@ namespace DeliveryQuoteEngine
         };
     }
 
+    public static class QuoteExtensions
+    {
+        public static decimal TotalRevenue(this IEnumerable<DeliveryQuote> quotes) => quotes.Sum(q => q.Cost);
+
+        public static string ToFormattedString(this Result<BookingState, string> result) => result switch
+        {
+            Result<BookingState, string>.Ok ok => $"Success: {ok.Value}",
+            Result<BookingState, string>.Fail f => $"Error: {f.Error}",
+            _ => "Unknown"
+        };
+    }
+
     public sealed record DeliveryQuote(string RequestId, string CustomerName, decimal Cost);
     public sealed record QuoteSummary(IReadOnlyList<DeliveryQuote> Quotes, decimal TotalRevenue, int AcceptedCount, int RejectedCount);
 
@@ -57,7 +70,7 @@ namespace DeliveryQuoteEngine
             if (string.IsNullOrWhiteSpace(name)) return new Result<ValidatedBooking, string>.Fail("Customer name can't be empty.");
             if (dist < 0.5) return new Result<ValidatedBooking, string>.Fail("Distance must be at least 0.5 km.");
             if (weight < 0) return new Result<ValidatedBooking, string>.Fail("Weight must be zero or greater.");
-
+            
             return new Result<ValidatedBooking, string>.Ok(new ValidatedBooking(id, name, dist, weight));
         }
     }
@@ -112,7 +125,8 @@ namespace DeliveryQuoteEngine
         public static QuoteSummary RunPipeline(IEnumerable<string> lines, Func<ValidatedBooking, decimal> policy)
         {
             var (valid, errors) = ParseAndValidate(lines);
-            return BuildSummary(CalculateQuotes(valid, policy), errors.Count);
+            var quotes = CalculateQuotes(valid, policy);
+            return BuildSummary(quotes, errors.Count);
         }
 
         public static decimal StandardPolicy(ValidatedBooking b) => 500m + (100m * (decimal)b.DistanceKm);
@@ -164,6 +178,19 @@ namespace DeliveryQuoteEngine
                     return $"Confirmed: {c.Booking.RequestId} {c.Booking.CustomerName} - Total: {c.Cost:F2}";
                 });
         }
+
+        public static List<string> ReportRevenueByCustomer(IEnumerable<DeliveryQuote> quotes) =>
+            quotes.GroupBy(q => q.CustomerName)
+                  .Select(g => new { Name = g.Key, Total = g.Sum(x => x.Cost) })
+                  .OrderByDescending(x => x.Total).ThenBy(x => x.Name)
+                  .Select(x => $"{x.Name}: {x.Total:F2}")
+                  .ToList();
+
+        public static List<string> ReportHighValueBookings(IEnumerable<ValidatedBooking> bookings, double minDistance) =>
+            bookings.Where(b => b.DistanceKm >= minDistance)
+                    .OrderByDescending(b => b.DistanceKm).ThenBy(b => b.RequestId)
+                    .Select(b => $"{b.RequestId} - {b.DistanceKm}km")
+                    .ToList();
     }
 
     public static class Program
