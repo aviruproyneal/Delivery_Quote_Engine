@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <RollForward>LatestMajor</RollForward>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Update="fee_lib.dll" CopyToOutputDirectory="PreserveNewest" Condition="Exists('fee_lib.dll')" />
+    <None Update="fee_lib.so" CopyToOutputDirectory="PreserveNewest" Condition="Exists('fee_lib.so')" />
+    <None Update="fee_lib.dylib" CopyToOutputDirectory="PreserveNewest" Condition="Exists('fee_lib.dylib')" />
+  </ItemGroup>
+</Project>

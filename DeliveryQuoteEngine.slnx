@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="DeliveryQuoteEngine.Tests/DeliveryQuoteEngine.Tests.csproj" />
+  <Project Path="DeliveryQuoteEngine/DeliveryQuoteEngine.csproj" />
+</Solution>
