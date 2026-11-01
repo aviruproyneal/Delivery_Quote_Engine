@@ -8,7 +8,6 @@ namespace DeliveryQuoteEngine.Tests
     public static class TestProgram
     {
         static int passed = 0, total = 0;
-
         static readonly string[] SampleData =
         {
             "R001|Alice|5.0|3.0",
@@ -28,7 +27,6 @@ namespace DeliveryQuoteEngine.Tests
         public static void Main()
         {
             Console.WriteLine("Assignment 5 Tests");
-
             var standard = QuoteEngine.RunPipeline(SampleData, QuoteEngine.StandardPolicy);
             Check("A5 Test 1: Normal: 4 valid, 1 invalid, Standard total = 3750", standard.AcceptedCount == 4 && standard.RejectedCount == 1 && standard.TotalRevenue == 3750m);
 
@@ -57,9 +55,7 @@ namespace DeliveryQuoteEngine.Tests
             Check("A5 Test 8: Purity: input collection unchanged", input.Count == originalCount && input[0] == originalFirst);
 
             Console.WriteLine();
-
             Console.WriteLine("Assignment 6 Tests");
-
             var (s1, b1, _) = ValidatedBooking.Create("R1", "Alice", 5.0, 3.0);
             Check("A6 Test 1: Factory Success: valid input creates a booking", s1 && b1 != null);
 
@@ -93,9 +89,7 @@ namespace DeliveryQuoteEngine.Tests
             Check("A6 Test 11: State Preservation: original cancelled state preserved", ReferenceEquals(cancelled, failedConfirm));
 
             Console.WriteLine();
-
             Console.WriteLine("Assignment 7 Tests");
-
             var repo = new Dictionary<string, ValidatedBooking> { { "R001", b1! } };
 
             var chain = QuoteEngine.ProcessBookingChain("R001", repo);
@@ -123,10 +117,8 @@ namespace DeliveryQuoteEngine.Tests
             bool mapperExecuted = false;
             bool binderExecuted = false;
             var failedRes = new Result<int, string>.Fail("Original Error");
-
             failedRes.Map(x => { mapperExecuted = true; return x; });
             failedRes.Bind(x => { binderExecuted = true; return new Result<int, string>.Ok(x); });
-
             Check("A7 Test 8: Failure Prop: Map skipped on failure", mapperExecuted == false);
             Check("A7 Test 9: Failure Prop: Bind skipped on failure", binderExecuted == false);
 
@@ -137,11 +129,8 @@ namespace DeliveryQuoteEngine.Tests
             Check("A7 Test 11: Boundary Failure: Operational exception caught", malformedFile is Result<string[], string>.Fail);
 
             Console.WriteLine();
-
             Console.WriteLine("Assignment 8 Tests");
-
             var quotes = QuoteEngine.CalculateQuotes(new List<ValidatedBooking> { b1! }, QuoteEngine.StandardPolicy);
-
             Check("A8 Test 1: Extension: TotalRevenue calculates correctly", quotes.TotalRevenue() == 1000m);
 
             var okState = new Result<BookingState, string>.Ok(new BookingState.Pending(b1!));
@@ -157,7 +146,6 @@ namespace DeliveryQuoteEngine.Tests
                 new DeliveryQuote("R2", "Bob", 700m),
                 new DeliveryQuote("R4", "Dave", 1500m)
             };
-
             var revReport = QuoteEngine.ReportRevenueByCustomer(multiQuotes);
             Check("A8 Test 4: Report 1: Grouped and ordered by revenue", revReport[0].StartsWith("Dave") && revReport.Count == 3);
 
@@ -175,6 +163,9 @@ namespace DeliveryQuoteEngine.Tests
 
             var snapshot = deferred.ToList();
             Check("A8 Test 9: Deferred: Snapshot materialized successfully", snapshot.Count == 1);
+
+            var nativeFail = NativeFeeAdapter.GetNativeFee(500, 5);
+            Check("A8 Test 10: Native: Handles missing library gracefully", nativeFail is Result<int, string>);
 
             Console.WriteLine();
             Console.WriteLine($"Passed: {passed}/{total}");

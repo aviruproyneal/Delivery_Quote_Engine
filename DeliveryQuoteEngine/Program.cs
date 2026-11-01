@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace DeliveryQuoteEngine
 {
@@ -70,7 +71,7 @@ namespace DeliveryQuoteEngine
             if (string.IsNullOrWhiteSpace(name)) return new Result<ValidatedBooking, string>.Fail("Customer name can't be empty.");
             if (dist < 0.5) return new Result<ValidatedBooking, string>.Fail("Distance must be at least 0.5 km.");
             if (weight < 0) return new Result<ValidatedBooking, string>.Fail("Weight must be zero or greater.");
-
+            
             return new Result<ValidatedBooking, string>.Ok(new ValidatedBooking(id, name, dist, weight));
         }
     }
@@ -81,6 +82,28 @@ namespace DeliveryQuoteEngine
         public sealed record Pending(ValidatedBooking Booking) : BookingState;
         public sealed record Confirmed(ValidatedBooking Booking, decimal Cost) : BookingState;
         public sealed record Cancelled(ValidatedBooking Booking, string Reason) : BookingState;
+    }
+
+    public static class NativeFeeAdapter
+    {
+        [DllImport("fee_lib", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int CalculateNativeFee(int baseFee, int distanceKm);
+
+        public static Result<int, string> GetNativeFee(int baseFee, int distanceKm)
+        {
+            try
+            {
+                return new Result<int, string>.Ok(CalculateNativeFee(baseFee, distanceKm));
+            }
+            catch (DllNotFoundException)
+            {
+                return new Result<int, string>.Fail("Native library fee_lib.dll not found.");
+            }
+            catch (Exception ex)
+            {
+                return new Result<int, string>.Fail($"Native error: {ex.Message}");
+            }
+        }
     }
 
     public static class QuoteEngine
@@ -95,9 +118,9 @@ namespace DeliveryQuoteEngine
             {
                 lineNumber++;
                 if (string.IsNullOrWhiteSpace(line)) continue;
+
                 var parts = line.Split("|");
                 if (parts.Length != 4) { errors.Add($"Line {lineNumber}: 4 fields required."); continue; }
-
                 if (!double.TryParse(parts[2].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double dist)) { errors.Add($"Line {lineNumber}: Invalid distance."); continue; }
                 if (!double.TryParse(parts[3].Trim(), NumberStyles.Float, CultureInfo.InvariantCulture, out double weight)) { errors.Add($"Line {lineNumber}: Invalid weight."); continue; }
 
@@ -105,6 +128,7 @@ namespace DeliveryQuoteEngine
                 if (result is Result<ValidatedBooking, string>.Ok ok) valid.Add(ok.Value);
                 else errors.Add($"Line {lineNumber}: {((Result<ValidatedBooking, string>.Fail)result).Error}");
             }
+
             return (valid, errors);
         }
 
@@ -175,13 +199,12 @@ namespace DeliveryQuoteEngine
             if (maybe is Maybe<ValidatedBooking>.None) return new Result<string, string>.Fail($"Booking {id} not found.");
 
             var booking = ((Maybe<ValidatedBooking>.Some)maybe).Value;
-
             return new Result<BookingState, string>.Ok(new BookingState.Pending(booking))
                 .Bind(state => Confirm(state, StandardPolicy(booking)))
                 .Map(state =>
                 {
                     var c = (BookingState.Confirmed)state;
-                    return $"Confirmed: {c.Booking.RequestId} {c.Booking.CustomerName} - Total: {c.Cost:F2}";
+                    return $"Confirmed: {c.Booking.RequestId} {c.Booking.CustomerName} Total: ${c.Cost:F2}";
                 });
         }
 
@@ -229,11 +252,11 @@ namespace DeliveryQuoteEngine
                 if (state is Result<BookingState, string>.Ok ok)
                 {
                     var c = (BookingState.Confirmed)ok.Value;
-                    Console.WriteLine($"Confirmed: {c.Booking.RequestId} {c.Booking.CustomerName} - Total: {c.Cost:F2}");
+                    Console.WriteLine($"Confirmed: {c.Booking.RequestId} {c.Booking.CustomerName} Total: ${c.Cost:F2}");
                 }
             }
-            Console.WriteLine();
 
+            Console.WriteLine();
             Console.WriteLine("3. Assignment 7: Result, Maybe, Map, Bind, File IO");
             var repo = new Dictionary<string, ValidatedBooking>();
             foreach (var b in validBookings) repo.Add(b.RequestId, b);
