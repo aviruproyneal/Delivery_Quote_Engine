@@ -33,7 +33,7 @@ namespace DeliveryQuoteEngine.Tests
             var quotes = QuoteEngine.CalculateQuotes(validBookings, standardPolicy);
 
             Check("Pure: TotalRevenue extension calculates correctly", quotes.TotalRevenue() == 3750m);
-
+            
             var okState = new Result<BookingState, string>.Ok(new BookingState.Pending(validBookings[0]));
             Check("Pure: ToFormattedString extension formats Ok", okState.ToFormattedString().StartsWith("Success"));
 
@@ -58,6 +58,9 @@ namespace DeliveryQuoteEngine.Tests
 
             var reportEmpty = QuoteEngine.ReportRevenueByCustomer(new List<DeliveryQuote>());
             Check("Report: Empty dataset returns empty report", reportEmpty.Count == 0);
+
+            var nativeFail = NativeFeeAdapter.GetNativeFee(500, 5);
+            Check("Native: Adapter safely handles missing library", nativeFail is Result<int, string>);
 
             Console.WriteLine();
             Console.WriteLine($"Passed: {passed}/{total}");

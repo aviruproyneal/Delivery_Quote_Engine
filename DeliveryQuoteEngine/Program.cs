@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 
 namespace DeliveryQuoteEngine
 {
@@ -70,7 +71,7 @@ namespace DeliveryQuoteEngine
             if (string.IsNullOrWhiteSpace(name)) return new Result<ValidatedBooking, string>.Fail("Customer name can't be empty.");
             if (dist < 0.5) return new Result<ValidatedBooking, string>.Fail("Distance must be at least 0.5 km.");
             if (weight < 0) return new Result<ValidatedBooking, string>.Fail("Weight must be zero or greater.");
-
+            
             return new Result<ValidatedBooking, string>.Ok(new ValidatedBooking(id, name, dist, weight));
         }
     }
@@ -81,6 +82,28 @@ namespace DeliveryQuoteEngine
         public sealed record Pending(ValidatedBooking Booking) : BookingState;
         public sealed record Confirmed(ValidatedBooking Booking, decimal Cost) : BookingState;
         public sealed record Cancelled(ValidatedBooking Booking, string Reason) : BookingState;
+    }
+
+    public static class NativeFeeAdapter
+    {
+        [DllImport("fee_lib", CallingConvention = CallingConvention.Cdecl)]
+        private static extern int CalculateNativeFee(int baseFee, int distanceKm);
+
+        public static Result<int, string> GetNativeFee(int baseFee, int distanceKm)
+        {
+            try
+            {
+                return new Result<int, string>.Ok(CalculateNativeFee(baseFee, distanceKm));
+            }
+            catch (DllNotFoundException)
+            {
+                return new Result<int, string>.Fail("Native library fee_lib not found.");
+            }
+            catch (Exception ex)
+            {
+                return new Result<int, string>.Fail($"Native error: {ex.Message}");
+            }
+        }
     }
 
     public static class QuoteEngine
