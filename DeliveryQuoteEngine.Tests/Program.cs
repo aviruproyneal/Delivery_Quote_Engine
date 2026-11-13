@@ -26,13 +26,30 @@ namespace DeliveryQuoteEngine.Tests
 
         public static void Main()
         {
+            var standardPolicy = QuoteEngine.MakePricingPolicy(500m)(100m);
+            var expressPolicy = QuoteEngine.MakePricingPolicy(800m)(150m);
+
             var (validBookings, _) = QuoteEngine.ParseAndValidate(SampleData);
-            var quotes = QuoteEngine.CalculateQuotes(validBookings, d => 500m + (100m * (decimal)d));
+            var quotes = QuoteEngine.CalculateQuotes(validBookings, standardPolicy);
 
             Check("Pure: TotalRevenue extension calculates correctly", quotes.TotalRevenue() == 3750m);
-            
+
             var okState = new Result<BookingState, string>.Ok(new BookingState.Pending(validBookings[0]));
             Check("Pure: ToFormattedString extension formats Ok", okState.ToFormattedString().StartsWith("Success"));
+
+            Check("Pure: Currying creates different standard vs express policies", standardPolicy(5.0) != expressPolicy(5.0));
+
+            var missingFile = QuoteEngine.LoadCsv("missing_file.csv");
+            Check("File: Missing file fails safely", missingFile is Result<string[], string>.Fail f1 && f1.Error.Contains("missing"));
+
+            var malformedFile = QuoteEngine.LoadCsv(System.IO.Directory.GetCurrentDirectory());
+            Check("File: Malformed path throws boundary exception", malformedFile is Result<string[], string>.Fail);
+
+            var probeLog = new List<string>();
+            var deferredQuery = QuoteEngine.YieldValidBookings(validBookings, probeLog);
+            Check("Lazy: No processing before iteration", probeLog.Count == 0);
+            var snapshot = new List<ValidatedBooking>(deferredQuery);
+            Check("Lazy: Processing occurs on ToList materialization", probeLog.Count == 4);
 
             var failResult = new Result<int, string>.Fail("Error");
             bool mapRun = false;

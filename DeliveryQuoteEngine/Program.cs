@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
 using System.Linq;
 
 namespace DeliveryQuoteEngine
@@ -69,7 +70,7 @@ namespace DeliveryQuoteEngine
             if (string.IsNullOrWhiteSpace(name)) return new Result<ValidatedBooking, string>.Fail("Customer name can't be empty.");
             if (dist < 0.5) return new Result<ValidatedBooking, string>.Fail("Distance must be at least 0.5 km.");
             if (weight < 0) return new Result<ValidatedBooking, string>.Fail("Weight must be zero or greater.");
-            
+
             return new Result<ValidatedBooking, string>.Ok(new ValidatedBooking(id, name, dist, weight));
         }
     }
@@ -107,6 +108,9 @@ namespace DeliveryQuoteEngine
             return (valid, errors);
         }
 
+        public static Func<decimal, Func<double, decimal>> MakePricingPolicy(decimal baseFee) =>
+            rate => distance => baseFee + (rate * (decimal)distance);
+
         public static IReadOnlyList<DeliveryQuote> CalculateQuotes(IReadOnlyList<ValidatedBooking> requests, Func<double, decimal> policy)
         {
             var quotes = new List<DeliveryQuote>();
@@ -118,6 +122,32 @@ namespace DeliveryQuoteEngine
         {
             if (repo.ContainsKey(id)) return new Maybe<ValidatedBooking>.Some(repo[id]);
             return new Maybe<ValidatedBooking>.None();
+        }
+
+        public static Result<string[], string> LoadCsv(string path)
+        {
+            try
+            {
+                if (!File.Exists(path)) return new Result<string[], string>.Fail("CSV file missing.");
+                using var reader = new StreamReader(path);
+                var lines = new List<string>();
+                string? line;
+                while ((line = reader.ReadLine()) != null) lines.Add(line);
+                return new Result<string[], string>.Ok(lines.ToArray());
+            }
+            catch (Exception ex)
+            {
+                return new Result<string[], string>.Fail($"File error: {ex.Message}");
+            }
+        }
+
+        public static IEnumerable<ValidatedBooking> YieldValidBookings(IEnumerable<ValidatedBooking> bookings, List<string>? log = null)
+        {
+            foreach (var b in bookings)
+            {
+                log?.Add($"Processed {b.RequestId}");
+                yield return b;
+            }
         }
 
         public static List<string> ReportRevenueByCustomer(IEnumerable<DeliveryQuote> quotes) =>
