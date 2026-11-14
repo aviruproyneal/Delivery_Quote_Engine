@@ -28,7 +28,6 @@ namespace DeliveryQuoteEngine.Tests
         {
             var standardPolicy = QuoteEngine.MakePricingPolicy(500m)(100m);
             var expressPolicy = QuoteEngine.MakePricingPolicy(800m)(150m);
-
             var (validBookings, _) = QuoteEngine.ParseAndValidate(SampleData);
             var quotes = QuoteEngine.CalculateQuotes(validBookings, standardPolicy);
 
@@ -39,11 +38,46 @@ namespace DeliveryQuoteEngine.Tests
 
             Check("Pure: Currying creates different standard vs express policies", standardPolicy(5.0) != expressPolicy(5.0));
 
+            var valResult = ValidatedBooking.Create("R1", "Alice", 5.0, 3.0);
+            Check("Domain: Factory creates valid booking", valResult is Result<ValidatedBooking, string>.Ok);
+
+            var badResult = ValidatedBooking.Create("R1", "Alice", 0.4, 3.0);
+            Check("Domain: Factory rejects distance < 0.5", badResult is Result<ValidatedBooking, string>.Fail);
+
+            var badName = ValidatedBooking.Create("R1", "", 5.0, 3.0);
+            Check("Domain: Factory rejects empty name", badName is Result<ValidatedBooking, string>.Fail);
+
+            var pending = new BookingState.Pending(validBookings[0]);
+            var confirmed = QuoteEngine.Confirm(pending, 1000m);
+            Check("Domain: Confirm transitions Pending to Confirmed", confirmed is Result<BookingState, string>.Ok);
+
+            var cancelled = QuoteEngine.Cancel(pending, "User cancelled");
+            if (cancelled is Result<BookingState, string>.Ok cOk)
+            {
+                var failConfirm = QuoteEngine.Confirm(cOk.Value, 1000m);
+                Check("Domain: Cannot confirm a cancelled booking", failConfirm is Result<BookingState, string>.Fail);
+            }
+            else
+            {
+                Check("Domain: Cannot confirm a cancelled booking", false);
+            }
+
+            var repo = new Dictionary<string, ValidatedBooking> { { "R1", validBookings[0] } };
+            var chainSuccess = QuoteEngine.ProcessBookingChain("R1", repo, standardPolicy);
+            Check("Workflow: Complete chain with Map and Bind", chainSuccess is Result<string, string>.Ok sOk && sOk.Value.Contains("Confirmed"));
+
+            var chainFail = QuoteEngine.ProcessBookingChain("R999", repo, standardPolicy);
+            Check("Workflow: Chain fails on missing lookup", chainFail is Result<string, string>.Fail);
+
             var missingFile = QuoteEngine.LoadCsv("missing_file.csv");
             Check("File: Missing file fails safely", missingFile is Result<string[], string>.Fail f1 && f1.Error.Contains("missing"));
 
             var malformedFile = QuoteEngine.LoadCsv(System.IO.Directory.GetCurrentDirectory());
             Check("File: Malformed path throws boundary exception", malformedFile is Result<string[], string>.Fail);
+
+            var maybeFound = QuoteEngine.FindBooking(repo, "R1");
+            var maybeMissing = QuoteEngine.FindBooking(repo, "R999");
+            Check("Maybe: Lookup handles found and missing", maybeFound is Maybe<ValidatedBooking>.Some && maybeMissing is Maybe<ValidatedBooking>.None);
 
             var probeLog = new List<string>();
             var deferredQuery = QuoteEngine.YieldValidBookings(validBookings, probeLog);

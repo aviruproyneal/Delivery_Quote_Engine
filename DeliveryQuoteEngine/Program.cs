@@ -141,6 +141,35 @@ namespace DeliveryQuoteEngine
             return quotes;
         }
 
+        public static QuoteSummary RunPipeline(IEnumerable<string> lines, Func<double, decimal> policy)
+        {
+            var (valid, errors) = ParseAndValidate(lines);
+            var quotes = CalculateQuotes(valid, policy);
+            return new QuoteSummary(quotes, quotes.TotalRevenue(), quotes.Count, errors.Count);
+        }
+
+        public static Result<BookingState, string> Confirm(BookingState state, decimal cost)
+        {
+            return state switch
+            {
+                BookingState.Pending p => new Result<BookingState, string>.Ok(new BookingState.Confirmed(p.Booking, cost)),
+                BookingState.Confirmed => new Result<BookingState, string>.Ok(state),
+                BookingState.Cancelled => new Result<BookingState, string>.Fail("Cannot confirm a cancelled booking."),
+                _ => new Result<BookingState, string>.Fail("Unknown state.")
+            };
+        }
+
+        public static Result<BookingState, string> Cancel(BookingState state, string reason)
+        {
+            return state switch
+            {
+                BookingState.Pending p => new Result<BookingState, string>.Ok(new BookingState.Cancelled(p.Booking, reason)),
+                BookingState.Cancelled => new Result<BookingState, string>.Ok(state),
+                BookingState.Confirmed => new Result<BookingState, string>.Fail("Cannot cancel a confirmed booking."),
+                _ => new Result<BookingState, string>.Fail("Unknown state.")
+            };
+        }
+
         public static Maybe<ValidatedBooking> FindBooking(Dictionary<string, ValidatedBooking> repo, string id)
         {
             if (repo.ContainsKey(id)) return new Maybe<ValidatedBooking>.Some(repo[id]);
@@ -162,6 +191,18 @@ namespace DeliveryQuoteEngine
             {
                 return new Result<string[], string>.Fail($"File error: {ex.Message}");
             }
+        }
+
+        public static Result<string, string> ProcessBookingChain(string id, Dictionary<string, ValidatedBooking> repo, Func<double, decimal> policy)
+        {
+            var maybe = FindBooking(repo, id);
+            if (maybe is Maybe<ValidatedBooking>.None) return new Result<string, string>.Fail($"Booking {id} not found.");
+
+            var booking = ((Maybe<ValidatedBooking>.Some)maybe).Value;
+
+            return new Result<BookingState, string>.Ok(new BookingState.Pending(booking))
+                .Bind(state => Confirm(state, policy(booking.DistanceKm)))
+                .Map(state => $"Confirmed: {((BookingState.Confirmed)state).Booking.RequestId} - {((BookingState.Confirmed)state).Cost:F2}");
         }
 
         public static IEnumerable<ValidatedBooking> YieldValidBookings(IEnumerable<ValidatedBooking> bookings, List<string>? log = null)
@@ -191,6 +232,106 @@ namespace DeliveryQuoteEngine
     {
         public static void Main()
         {
+            var standardPolicy = QuoteEngine.MakePricingPolicy(500m)(100m);
+
+            var filePath = Path.Combine(AppContext.BaseDirectory, "data.csv");
+            var fileResult = QuoteEngine.LoadCsv(filePath);
+            
+            if (fileResult is not Result<string[], string>.Ok fOk)
+            {
+                var error = ((Result<string[], string>.Fail)fileResult).Error;
+                Console.WriteLine($"[Fatal] Could not load data.csv from {filePath}: {error}");
+                return; 
+            }
+
+            var (validBookings, errors) = QuoteEngine.ParseAndValidate(fOk.Value);
+            
+            RunInteractiveMenu(fOk.Value, validBookings, errors, standardPolicy);
+        }
+
+        private static void RunInteractiveMenu(
+            string[] activeLines,
+            IReadOnlyList<ValidatedBooking> validBookings, 
+            IReadOnlyList<string> errors, 
+            Func<double, decimal> standardPolicy)
+        {
+            var repo = new Dictionary<string, ValidatedBooking>();
+            foreach (var b in validBookings) repo.Add(b.RequestId, b);
+
+            while (true)
+            {
+                Console.WriteLine("\nDelivery Quote Engine");
+                Console.WriteLine("1. Run Standard Quote Pipeline");
+                Console.WriteLine("2. View Parse Errors");
+                Console.WriteLine("3. Test State Transitions (Confirm/Cancel)");
+                Console.WriteLine("4. Native C Fee Calculator");
+                Console.WriteLine("5. Generate Reports");
+                Console.WriteLine("6. Test Deferred Execution");
+                Console.WriteLine("Q. Quit");
+                Console.Write("Select an option: ");
+
+                string? choice = Console.ReadLine()?.Trim().ToUpper();
+                Console.WriteLine();
+
+                switch (choice)
+                {
+                    case "1":
+                        var standardSummary = QuoteEngine.RunPipeline(activeLines, standardPolicy);
+                        var expressPolicy = QuoteEngine.MakePricingPolicy(800m)(150m);
+                        var expressSummary = QuoteEngine.RunPipeline(activeLines, expressPolicy);
+                        
+                        Console.WriteLine($"Standard Policy Total Revenue: {standardSummary.TotalRevenue:F2}");
+                        Console.WriteLine($"Express Policy Total Revenue:  {expressSummary.TotalRevenue:F2}");
+                        break;
+
+                    case "2":
+                        if (errors.Count == 0) Console.WriteLine("No parse errors found.");
+                        foreach (var err in errors) Console.WriteLine($"[Error] {err}");
+                        break;
+
+                    case "3":
+                        if (validBookings.Count == 0) { Console.WriteLine("No valid bookings available."); break; }
+                        var pendingState = new BookingState.Pending(validBookings[0]);
+                        var cancelledState = QuoteEngine.Cancel(pendingState, "Customer changed mind");
+                        if (cancelledState is Result<BookingState, string>.Ok cOk)
+                        {
+                            var confirmFail = QuoteEngine.Confirm(cOk.Value, 500m);
+                            Console.WriteLine($"Attempting to confirm cancelled booking: {confirmFail.ToFormattedString()}");
+                        }
+                        break;
+
+                    case "4":
+                        var nativeFee = NativeFeeAdapter.GetNativeFee(500, 5);
+                        if (nativeFee is Result<int, string>.Ok nOk) Console.WriteLine($"[Native Success] Base Fee for 5km: {nOk.Value}");
+                        else if (nativeFee is Result<int, string>.Fail nFail) Console.WriteLine($"[Native Failure] {nFail.Error}");
+                        break;
+
+                    case "5":
+                        var quotes = QuoteEngine.CalculateQuotes(validBookings, standardPolicy);
+                        Console.WriteLine("[Report 1] Revenue by Customer:");
+                        foreach (var row in QuoteEngine.ReportRevenueByCustomer(quotes)) Console.WriteLine($"  {row}");
+
+                        Console.WriteLine("\n[Report 2] High Value Bookings (>= 2km):");
+                        foreach (var row in QuoteEngine.ReportHighValueBookings(validBookings, 2.0)) Console.WriteLine($"  {row}");
+                        break;
+
+                    case "6":
+                        var log = new List<string>();
+                        var deferred = QuoteEngine.YieldValidBookings(validBookings, log);
+                        Console.WriteLine($"[Deferred] Log count before ToList(): {log.Count}");
+                        var snapshot = deferred.ToList();
+                        Console.WriteLine($"[Deferred] Log count after ToList(): {log.Count}");
+                        break;
+
+                    case "Q":
+                        Console.WriteLine("Exiting application.");
+                        return;
+
+                    default:
+                        Console.WriteLine("Invalid choice. Please try again.");
+                        break;
+                }
+            }
         }
     }
 }
