@@ -149,4 +149,4 @@ Our test suite contains **18 automated tests** that cover pure functions, domain
 ## Git Repository
 - **URL:** https://github.com/aviruproyneal/Delivery_Quote_Engine.git
 - **Branch:** main
-- **Final Commit:** This is the final code implementation commit and push, which will generate the final commit identifier, so the final commit identifier is not included here. The  final commit identifier has been updated in the latest GitHub repository link, and is also included in all of the reports.
+- **Final Commit:** 52be5932181da25ee6f1e1c3b9ec27a631a32391
