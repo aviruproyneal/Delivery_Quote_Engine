@@ -313,6 +313,24 @@ namespace DeliveryQuoteEngine
 
                         Console.WriteLine("\n[Report 2] High Value Bookings (>= 2km):");
                         foreach (var row in QuoteEngine.ReportHighValueBookings(validBookings, 2.0)) Console.WriteLine($"  {row}");
+
+                        var reportPath = Path.Combine(Directory.GetCurrentDirectory(), "RevenueReport.csv");
+                        try
+                        {
+                            using (var writer = new StreamWriter(reportPath))
+                            {
+                                writer.WriteLine("CustomerName,TotalRevenue");
+                                foreach (var row in QuoteEngine.ReportRevenueByCustomer(quotes))
+                                {
+                                    writer.WriteLine(row.Replace(": ", ","));
+                                }
+                            }
+                            Console.WriteLine($"\n[Report Exported] Saved successfully to {reportPath}");
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"\n[Export Failed] {ex.Message}");
+                        }
                         break;
 
                     case "6":
